@@ -15,6 +15,7 @@ constexpr const bool PRINT_INFO = false;
 
 class ThreadPool{
 public:
+    /* Construct function */
     ThreadPool(size_t nums_worker = std::thread::hardware_concurrency()): 
         should_stop_(false)
     {
@@ -43,6 +44,7 @@ public:
         }
     }
 
+    /* Destruct function*/
     ~ThreadPool(){
         {
             std::unique_lock<std::mutex> lock(this->task_mutex_);
@@ -54,16 +56,16 @@ public:
         }
     }
 
-
+    /* Push task to the front of the task queue */
     template<typename Func, typename... Args>
     auto push_front(Func&& func, Args&&... args){
-        return push(std::forward<Func>(func), true, std::forward<Args>(args)...);
+        return push<Func, true, Args...> (std::forward<Func>(func), std::forward<Args>(args)...);
     }
 
-
+    /* Push task to the end of the task queue */
     template<typename Func, typename... Args>
     auto push_back(Func&& func, Args&&... args){
-        return push(std::forward<Func>(func), false, std::forward<Args>(args)...); 
+        return push<Func, false, Args...> (std::forward<Func>(func), std::forward<Args>(args)...); 
     }
 
 
@@ -75,8 +77,9 @@ private:
     std::condition_variable             cv_;
     
 
-    template<typename Func, typename... Args>
-    auto push(Func&& func, bool is_front, Args&&... args) -> std::future<typename std::invoke_result<Func, Args...>::type>{
+    /* Push function */
+    template<typename Func, bool is_front,  typename... Args>
+    auto push(Func&& func, Args&&... args) -> std::future<typename std::invoke_result<Func, Args...>::type>{
         using return_type = typename std:: invoke_result<Func, Args...>::type;
         auto task = std::make_shared<std::packaged_task<return_type()>>(
         [f = std::forward<Func>(func), tuple_args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
@@ -88,12 +91,12 @@ private:
             if (should_stop_){
                 throw std::runtime_error("push task on stopped ThreadPool");
             }
-            if (is_front){
+            if constexpr (is_front){
                 tasks_.emplace_front([task](){ (*task)(); });
             }
             else{
                 tasks_.emplace_back([task](){ (*task)(); });
-           }
+            }
         }
         cv_.notify_one();
         return res;
@@ -178,7 +181,7 @@ int main(){
             return self(self, std::forward<decltype(cur)>(cur), std::forward<decltype(args)>(args)...);
         }
     };
-    std::future<bool> task5_res = pool.push_back(task5, task5, "The", "world", "will", "be", "more", "beautiful", 0, "w", 0);
+    std::future<bool> task5_res = pool.push_front(task5, task5, "The", "world", "will", "be", "more", "beautiful", 0, "w", 0);
     std::cout << "task5 result:" << (!task5_res.get() ? "Variables are different type" : "Variables are Same type") << std::endl;
 
 
